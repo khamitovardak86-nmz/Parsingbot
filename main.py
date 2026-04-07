@@ -4,7 +4,7 @@ import os
 import re
 import sys
 
-# Проверка и установка библиотек, если их не хватает
+# Проверка и установка библиотек
 try:
     import speech_recognition as sr
     from pydub import AudioSegment
@@ -18,8 +18,8 @@ except ImportError:
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
 
-# ТВОЙ НОВЫЙ ТОКЕН (ОБНОВЛЕН)
-API_TOKEN = '8688129970:AAH3yWYWT4MSKtWmYSrDedkpBAeaTDkhi2U'
+# ТВОЙ АБСОЛЮТНО НОВЫЙ ТОКЕН
+API_TOKEN = '8713594420:AAExQByQgqCInIUWdvLU2rOvPFuZCILDdiM'
 
 # Настройка логирования
 logging.basicConfig(level=logging.INFO)
@@ -27,14 +27,14 @@ bot = Bot(token=API_TOKEN)
 dp = Dispatcher()
 
 def extract_video_id(url):
-    """Извлекает ID video из ссылки YouTube"""
+    """Извлекает ID видео из ссылки YouTube"""
     pattern = r"(?:v=|\/|be\/|live\/)([0-9A-Za-z_-]{11})"
     match = re.search(pattern, url)
     return match.group(1) if match else None
 
 @dp.message(Command("start"))
 async def send_welcome(message: types.Message):
-    await message.reply("Бот обновлен! Токен заменен. Теперь я использую облачное распознавание речи Google. Присылай ссылку на YouTube!")
+    await message.reply("Привет! Это твой новый Parsing Bot 777. Присылай ссылку на YouTube, и я попробую превратить видео в текст!")
 
 @dp.message()
 async def process_video(message: types.Message):
@@ -42,7 +42,7 @@ async def process_video(message: types.Message):
     if not video_id:
         return
 
-    status_msg = await message.answer("⏳ Начинаю работу. Скачиваю аудио дорожку...")
+    status_msg = await message.answer("⏳ Начинаю работу со свежим токеном! Скачиваю звук...")
 
     audio_file = f"{video_id}.mp3"
     wav_file = f"{video_id}.wav"
@@ -63,55 +63,50 @@ async def process_video(message: types.Message):
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             ydl.download([message.text])
         
-        # Поправляем расширение, если нужно
         if not os.path.exists(audio_file) and os.path.exists(video_id):
             os.rename(video_id, audio_file)
 
-        await status_msg.edit_text("⏳ Аудио скачано. Конвертирую и распознаю речь...")
+        await status_msg.edit_text("⏳ Звук получен. Конвертирую и расшифровываю...")
 
-        # 2. Конвертация в WAV (необходима для SpeechRecognition)
-        # Обрабатываем первые 10 минут видео (600 000 мс)
+        # 2. Конвертация в WAV
         audio = AudioSegment.from_mp3(audio_file)
         audio[:600000].export(wav_file, format="wav")
 
-        # 3. Распознавание через Google Cloud Speech API
+        # 3. Распознавание
         recognizer = sr.Recognizer()
         with sr.AudioFile(wav_file) as source:
             audio_data = recognizer.record(source)
-            # Пытаемся распознать на русском, если не выйдет - на английском
             try:
                 text = recognizer.recognize_google(audio_data, language="ru-RU")
             except:
                 text = recognizer.recognize_google(audio_data, language="en-US")
 
         if not text:
-            await status_msg.edit_text("❌ Не удалось разобрать слова в этом видео.")
+            await status_msg.edit_text("❌ Не удалось найти речь в этом видео.")
             return
 
-        # Лимит сообщения в Telegram 4096 символов
         if len(text) > 4000:
             text = text[:4000] + "..."
 
-        await status_msg.edit_text(f"✅ Готово! Текст из видео:\n\n{text}")
+        await status_msg.edit_text(f"✅ Готово!\n\n{text}")
 
     except Exception as e:
-        logging.error(f"Ошибка процесса: {e}")
-        await status_msg.edit_text(f"❌ Произошла ошибка. Проверь наличие ffmpeg на сервере. Текст ошибки: {str(e)[:100]}")
+        logging.error(f"Ошибка: {e}")
+        await status_msg.edit_text(f"❌ Ошибка: {str(e)[:100]}. Проверь, добавлен ли ffmpeg в Nixpacks.")
     
     finally:
-        # Очистка временных файлов
         for temp_file in [audio_file, wav_file, video_id]:
             if os.path.exists(temp_file):
                 os.remove(temp_file)
 
 async def main():
-    # Удаляем старые запросы и запускаем
+    # Очистка очереди сообщений перед запуском
     await bot.delete_webhook(drop_pending_updates=True)
-    logging.info("Бот запущен с новым токеном!")
+    logging.info("НОВЫЙ БОТ ЗАПУЩЕН!")
     await dp.start_polling(bot)
 
 if __name__ == '__main__':
     try:
         asyncio.run(main())
     except (KeyboardInterrupt, SystemExit):
-        logging.info("Бот остановлен")
+        pass
