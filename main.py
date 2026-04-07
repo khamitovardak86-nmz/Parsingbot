@@ -1,77 +1,60 @@
+import logging
 import asyncio
-import re
-import os
-from aiogram import Bot, Dispatcher, F, types
+from aiogram import Bot, Dispatcher, types
 from youtube_transcript_api import YouTubeTranscriptApi
-import requests
 
-# ТВОЙ ТОКЕН
-API_TOKEN = '8688129970:AAEqSsCXu2v8EXOtIbinjfANHk1faT-aU_k'
+# Твой новый токен
+API_TOKEN = '8688129970:AAE_UbL_CAd178AWo64E2wqifRs5VH8I1Ag'
 
+# Настройка логирования
+logging.basicConfig(level=logging.INFO)
+
+# Инициализация бота и диспетчера
 bot = Bot(token=API_TOKEN)
-dp = Dispatcher()
+dp = Dispatcher(bot)
 
-def get_summary(text):
-    """Отправляем текст нейросети для краткого изложения на РУССКОМ"""
-    try:
-        # Промпт заставляет нейросеть выдать суть на русском
-        prompt = f"Проанализируй этот текст (это субтитры видео) и составь краткий конспект на русском языке. Выдели главные мысли по пунктам. Текст: {text[:5000]}"
-        
-        response = requests.post(
-            "https://api.clashai.eu/v1/chat/completions",
-            json={
-                "model": "gpt-3.5-turbo",
-                "messages": [{"role": "user", "content": prompt}]
-            },
-            timeout=35
-        )
-        return response.json()['choices'][0]['message']['content']
-    except Exception as e:
-        return f"⚠️ Нейросеть не смогла сделать пересказ, но текст получен. Вот начало:\n\n{text[:500]}..."
+@dp.message_handler(commands=['start', 'help'])
+async def send_welcome(message: types.Message):
+    await message.reply("Привет! Пришли мне ссылку на YouTube видео, и я попробую достать из него текст.")
 
-@dp.message(F.text.contains("youtube.com/") | F.text.contains("youtu.be/"))
-async def handle_video(message: types.Message):
+@dp.message_handler()
+async def get_transcript(message: types.Message):
     url = message.text
-    # Регулярка для поиска ID видео
-    video_id_match = re.search(r"(?:v=|\/)([0-9A-Za-z_-]{11})", url)
-    
-    if not video_id_match:
-        await message.answer("❌ Не могу распознать ссылку.")
+    video_id = ""
+
+    # Пытаемся достать ID видео из ссылки
+    if "v=" in url:
+        video_id = url.split("v=")[1].split("&")[0]
+    elif "be/" in url:
+        video_id = url.split("be/")[1].split("?")[0]
+
+    if not video_id:
+        await message.reply("Пожалуйста, пришли корректную ссылку на YouTube видео.")
         return
-        
-    video_id = video_id_match.group(1)
-    status_msg = await message.answer("⏳ Ищу и перевожу субтитры...")
+
+    await message.answer("⏳ Собираю текст видео, подожди немного...")
 
     try:
-        # Получаем все доступные субтитры для видео
-        transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
+        # Пытаемся получить субтитры (сначала на русском, потом на английском)
+        transcript_list = YouTubeTranscriptApi.get_transcript(video_id, languages=['ru', 'en'])
         
-        try:
-            # 1. Пробуем найти родные русские субтитры
-            transcript = transcript_list.find_transcript(['ru'])
-        except:
-            # 2. Если русских нет, берем ЛЮБЫЕ другие (англ, нем и т.д.) 
-            # и просим YouTube перевести их на русский (функция .translate)
-            first_transcript = next(iter(transcript_list))
-            transcript = first_transcript.translate('ru')
+        full_text = ""
+        for entry in transcript_list:
+            full_text += entry['text'] + " "
 
-        # Загружаем текст
-        data = transcript.fetch()
-        full_text = " ".join([i['text'] for i in data])
-        
-        await status_msg.edit_text("🤖 Перевожу и выделяю суть...")
-        
-        summary = get_summary(full_text)
-        await message.answer(f"📋 **Краткий пересказ видео (на русском):**\n\n{summary}")
-        await status_msg.delete()
+        # Если текст слишком длинный, Telegram его не пропустит (лимит 4096 символов)
+        if len(full_text) > 4000:
+            full_text = full_text[:4000] + "..."
 
+        await message.answer(f"✅ Готово! Вот текст видео:\n\n{full_text}")
+    
     except Exception as e:
-        print(f"Ошибка: {e}")
-        await status_msg.edit_text("❌ У этого видео вообще нет субтитров (даже автоматических). Нечего парсить.")
+        await message.answer(f"❌ Не удалось получить текст. Возможно, в видео нет субтитров или они запрещены.")
 
 async def main():
-    print("Бот запущен и готов к работе!")
-    await dp.start_polling(bot)
+    # Удаляем вебхук перед запуском, чтобы не было конфликтов
+    await bot.delete_webhook(drop_pending_updates=True)
+    await dp.start_polling()
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     asyncio.run(main())
