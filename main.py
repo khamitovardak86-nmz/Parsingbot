@@ -1,9 +1,12 @@
 import logging
 import asyncio
+import os
 import re
+import speech_recognition as sr
+from pydub import AudioSegment
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
-from youtube_transcript_api import YouTubeTranscriptApi
+import yt_dlp
 
 API_TOKEN = '8688129970:AAHCOdltYIaVR3WMEYRRxhDH52AZ1up5Ec8'
 
@@ -18,38 +21,55 @@ def extract_video_id(url):
 
 @dp.message(Command("start"))
 async def send_welcome(message: types.Message):
-    await message.reply("Привет! Я работаю в легком режиме. Пришли ссылку на YouTube, и я найду текст (RU/EN).")
+    await message.reply("Привет! Теперь я использую облачное распознавание речи. Пришли ссылку на любое видео!")
 
 @dp.message()
-async def get_transcript(message: types.Message):
+async def process_video(message: types.Message):
     video_id = extract_video_id(message.text)
-    if not video_id:
-        return
+    if not video_id: return
 
-    wait_msg = await message.answer("⏳ Ищу текстовую дорожку...")
+    status_msg = await message.answer("⏳ Скачиваю аудио дорожку...")
 
-    try:
-        # Получаем все доступные субтитры
-        transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
-        
-        # Пытаемся найти русский, если нет - английский
-        try:
-            transcript = transcript_list.find_transcript(['ru', 'en'])
-        except:
-            # Если ручных нет, ищем автогенерированные
-            transcript = transcript_list.find_generated_transcript(['ru', 'en'])
-
-        data = transcript.fetch()
-        full_text = " ".join([entry['text'] for entry in data])
-
-        if len(full_text) > 4000:
-            full_text = full_text[:4000] + "..."
-
-        await wait_msg.edit_text(f"✅ Текст ({transcript.language}):\n\n{full_text}")
+    audio_file = f"{video_id}.mp3"
+    wav_file = f"{video_id}.wav"
     
+    try:
+        # 1. Скачиваем аудио через yt-dlp
+        ydl_opts = {
+            'format': 'bestaudio/best',
+            'outtmpl': video_id,
+            'postprocessors': [{'key': 'FFmpegExtractAudio','preferredcodec': 'mp3','preferredquality': '128'}],
+            'quiet': True
+        }
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            ydl.download([message.text])
+        
+        if not os.path.exists(audio_file) and os.path.exists(video_id):
+            os.rename(video_id, audio_file)
+
+        await status_msg.edit_text("⏳ Распознаю речь через облако (это может занять время)...")
+
+        # 2. Конвертируем в WAV (нужно для библиотеки распознавания)
+        audio = AudioSegment.from_mp3(audio_file)
+        # Берем первые 10 минут, чтобы не перегружать бесплатный сервер
+        audio[:600000].export(wav_file, format="wav")
+
+        # 3. Распознавание речи
+        recognizer = sr.Recognizer()
+        with sr.AudioFile(wav_file) as source:
+            recorded_audio = recognizer.record(source)
+            # Используем Google Speech Recognition (бесплатный уровень)
+            text = recognizer.recognize_google(recorded_audio, language="ru-RU")
+
+        await status_msg.edit_text(f"✅ Текст из видео:\n\n{text}")
+
     except Exception as e:
         logging.error(f"Error: {e}")
-        await wait_msg.edit_text("❌ К сожалению, на серверах YouTube нет текста для этого видео. Без платного сервера или мощного ИИ это видео не расшифровать.")
+        await status_msg.edit_text("❌ Ошибка: не удалось распознать речь. Возможно, звук слишком тихий или видео слишком длинное.")
+    
+    finally:
+        for f in [audio_file, wav_file, video_id]:
+            if os.path.exists(f): os.remove(f)
 
 async def main():
     await bot.delete_webhook(drop_pending_updates=True)
