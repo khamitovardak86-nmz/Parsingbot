@@ -2,4 +2,4 @@ aiogram
 yt-dlp
 openai-whisper
 setuptools
-
+numpy
