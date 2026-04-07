@@ -6,7 +6,7 @@ from youtube_transcript_api import YouTubeTranscriptApi
 import requests
 
 # ТВОЙ ТОКЕН
-API_TOKEN = '8688129970:AAFTQT1rtijdgox08fKQcl55PLMNRlKyBCw'
+API_TOKEN = '8688129970:AAEqSsCXu2v8EXOtIbinjfANHk1faT-aU_k'
 
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher()
