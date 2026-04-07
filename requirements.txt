@@ -1,2 +1,5 @@
 aiogram
-youtube-transcript-api
+yt-dlp
+openai-whisper
+setuptools
+
