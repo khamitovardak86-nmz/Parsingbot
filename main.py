@@ -3,10 +3,10 @@ import asyncio
 from aiogram import Bot, Dispatcher, types
 from youtube_transcript_api import YouTubeTranscriptApi
 
-# Твой новый токен
-API_TOKEN = '8688129970:AAE_UbL_CAd178AWo64E2wqifRs5VH8I1Ag'
+# Твой самый свежий токен
+API_TOKEN = '8688129970:AAHCOdltYIaVR3WMEYRRxhDH52AZ1up5Ec8'
 
-# Настройка логирования
+# Настройка логирования, чтобы видеть работу в Railway
 logging.basicConfig(level=logging.INFO)
 
 # Инициализация бота и диспетчера
@@ -15,46 +15,48 @@ dp = Dispatcher(bot)
 
 @dp.message_handler(commands=['start', 'help'])
 async def send_welcome(message: types.Message):
-    await message.reply("Привет! Пришли мне ссылку на YouTube видео, и я попробую достать из него текст.")
+    await message.reply("Привет! Пришли мне ссылку на YouTube видео, и я пришлю тебе его текст.")
 
 @dp.message_handler()
 async def get_transcript(message: types.Message):
     url = message.text
     video_id = ""
 
-    # Пытаемся достать ID видео из ссылки
+    # Извлекаем ID видео из разных форматов ссылок
     if "v=" in url:
         video_id = url.split("v=")[1].split("&")[0]
     elif "be/" in url:
         video_id = url.split("be/")[1].split("?")[0]
 
     if not video_id:
-        await message.reply("Пожалуйста, пришли корректную ссылку на YouTube видео.")
+        await message.reply("Пожалуйста, пришли рабочую ссылку на YouTube.")
         return
 
-    await message.answer("⏳ Собираю текст видео, подожди немного...")
+    await message.answer("⏳ Минутку, достаю субтитры...")
 
     try:
-        # Пытаемся получить субтитры (сначала на русском, потом на английском)
+        # Пытаемся найти русские или английские субтитры
         transcript_list = YouTubeTranscriptApi.get_transcript(video_id, languages=['ru', 'en'])
         
-        full_text = ""
-        for entry in transcript_list:
-            full_text += entry['text'] + " "
+        full_text = " ".join([entry['text'] for entry in transcript_list])
 
-        # Если текст слишком длинный, Telegram его не пропустит (лимит 4096 символов)
+        # Ограничение Telegram на длину сообщения (4096 символов)
         if len(full_text) > 4000:
             full_text = full_text[:4000] + "..."
 
-        await message.answer(f"✅ Готово! Вот текст видео:\n\n{full_text}")
+        await message.answer(f"✅ Текст видео:\n\n{full_text}")
     
     except Exception as e:
-        await message.answer(f"❌ Не удалось получить текст. Возможно, в видео нет субтитров или они запрещены.")
+        await message.answer("❌ Не удалось найти субтитры. Попробуй другое видео.")
 
 async def main():
-    # Удаляем вебхук перед запуском, чтобы не было конфликтов
+    # Очищаем очередь старых сообщений и запускаем бота
     await bot.delete_webhook(drop_pending_updates=True)
+    logging.info("Бот успешно запущен!")
     await dp.start_polling()
 
 if __name__ == '__main__':
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except (KeyboardInterrupt, SystemExit):
+        logging.info("Бот остановлен")
