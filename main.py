@@ -4,7 +4,7 @@ import os
 import re
 import sys
 
-# Автоматическая проверка и установка библиотек
+# Попытка импорта библиотек
 try:
     import speech_recognition as sr
     from pydub import AudioSegment
@@ -18,7 +18,7 @@ except ImportError:
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
 
-# ТВОЙ НОВЫЙ ТОКЕН
+# Твой актуальный токен
 API_TOKEN = '8713594420:AAF80KdIxlsVMNTIONQ2kuXe_jFDwJCOcj4'
 
 logging.basicConfig(level=logging.INFO)
@@ -32,7 +32,7 @@ def extract_video_id(url):
 
 @dp.message(Command("start"))
 async def send_welcome(message: types.Message):
-    await message.reply("Бот обновлен с новым ключом! Присылай ссылку на видео.")
+    await message.reply("Бот готов! Пришли ссылку, и я постараюсь извлечь текст.")
 
 @dp.message()
 async def process_video(message: types.Message):
@@ -40,7 +40,7 @@ async def process_video(message: types.Message):
     if not video_id:
         return
 
-    status_msg = await message.answer("⏳ Начинаю обработку... Ищу аудио-дорожку.")
+    status_msg = await message.answer("⏳ Работаю над видео...")
     audio_file = f"{video_id}.mp3"
     wav_file = f"{video_id}.wav"
     
@@ -51,51 +51,46 @@ async def process_video(message: types.Message):
             'postprocessors': [{
                 'key': 'FFmpegExtractAudio',
                 'preferredcodec': 'mp3',
-                'preferredquality': '128',
+                'preferredquality': '64', # Снизил качество для экономии памяти
             }],
             'quiet': True,
             'no_warnings': True,
             'nocheckcertificate': True,
-            'geo_bypass': True,
             'add_header': [
-                'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36',
-                'Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-                'Accept-Language: ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7'
+                'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36'
             ]
         }
         
+        # Скачивание
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             ydl.download([message.text])
         
         if not os.path.exists(audio_file) and os.path.exists(video_id):
             os.rename(video_id, audio_file)
 
-        # Конвертация (требует ffmpeg в системе)
+        # Конвертация в WAV (здесь нужен ffmpeg)
         audio = AudioSegment.from_mp3(audio_file)
-        audio[:600000].export(wav_file, format="wav")
+        # Берем только первые 3 минуты для теста, чтобы не "уронить" сервер
+        audio[:180000].export(wav_file, format="wav")
 
         recognizer = sr.Recognizer()
         with sr.AudioFile(wav_file) as source:
             audio_data = recognizer.record(source)
-            try:
-                text = recognizer.recognize_google(audio_data, language="ru-RU")
-            except:
-                text = recognizer.recognize_google(audio_data, language="en-US")
+            text = recognizer.recognize_google(audio_data, language="ru-RU")
 
-        await status_msg.edit_text(f"✅ Текст извлечен:\n\n{text[:4000]}")
+        await status_msg.edit_text(f"✅ Результат:\n\n{text[:4000]}")
 
     except Exception as e:
-        await status_msg.edit_text(f"❌ Проблема: {str(e)[:150]}")
+        await status_msg.edit_text(f"❌ Ошибка: {str(e)[:150]}")
     
     finally:
         for f in [audio_file, wav_file, video_id]:
             if os.path.exists(f):
-                os.remove(f)
+                try: os.remove(f)
+                except: pass
 
 async def main():
-    # Очистка очереди перед стартом
     await bot.delete_webhook(drop_pending_updates=True)
-    logging.info("Бот запущен с новым токеном!")
     await dp.start_polling(bot)
 
 if __name__ == '__main__':
