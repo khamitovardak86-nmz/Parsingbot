@@ -18,8 +18,8 @@ except ImportError:
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
 
-# ТВОЙ НОВЫЙ ТОКЕН
-API_TOKEN = '8688129970:AAGQcfadeK94XZnOTlrIkAOcp9IxdswiwG4'
+# ТВОЙ НОВЫЙ ТОКЕН (ОБНОВЛЕН)
+API_TOKEN = '8688129970:AAH3yWYWT4MSKtWmYSrDedkpBAeaTDkhi2U'
 
 # Настройка логирования
 logging.basicConfig(level=logging.INFO)
@@ -27,7 +27,7 @@ bot = Bot(token=API_TOKEN)
 dp = Dispatcher()
 
 def extract_video_id(url):
-    """Извлекает ID видео из ссылки YouTube"""
+    """Извлекает ID video из ссылки YouTube"""
     pattern = r"(?:v=|\/|be\/|live\/)([0-9A-Za-z_-]{11})"
     match = re.search(pattern, url)
     return match.group(1) if match else None
