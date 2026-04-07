@@ -1,38 +1,38 @@
 import logging
 import asyncio
+import re
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
 from youtube_transcript_api import YouTubeTranscriptApi
 
-# Твой актуальный токен
 API_TOKEN = '8688129970:AAHCOdltYIaVR3WMEYRRxhDH52AZ1up5Ec8'
 
 logging.basicConfig(level=logging.INFO)
-
-# Для 3-й версии aiogram инициализация выглядит так:
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher()
 
-@dp.message(Command("start", "help"))
+def extract_video_id(url):
+    # Универсальный поиск ID видео (для ссылок /v/, /live/, /embed/, youtube.com, youtu.be)
+    pattern = r"(?:v=|\/|be\/|live\/)([0-9A-Za-z_-]{11})"
+    match = re.search(pattern, url)
+    return match.group(1) if match else None
+
+@dp.message(Command("start"))
 async def send_welcome(message: types.Message):
-    await message.reply("Привет! Пришли мне ссылку на YouTube видео, и я пришлю тебе его текст.")
+    await message.reply("Привет! Пришли мне ссылку на YouTube, и я достану текст.")
 
 @dp.message()
 async def get_transcript(message: types.Message):
-    url = message.text
-    video_id = ""
-
-    if "v=" in url:
-        video_id = url.split("v=")[1].split("&")[0]
-    elif "be/" in url:
-        video_id = url.split("be/")[1].split("?")[0]
+    video_id = extract_video_id(message.text)
 
     if not video_id:
+        await message.answer("⚠️ Не удалось распознать ссылку. Пришли обычную ссылку на видео.")
         return
 
-    await message.answer("⏳ Минутку, достаю субтитры...")
+    await message.answer("⏳ Собираю текст, подожди...")
 
     try:
+        # Пробуем достать русские или английские субтитры
         transcript_list = YouTubeTranscriptApi.get_transcript(video_id, languages=['ru', 'en'])
         full_text = " ".join([entry['text'] for entry in transcript_list])
 
@@ -40,13 +40,12 @@ async def get_transcript(message: types.Message):
             full_text = full_text[:4000] + "..."
 
         await message.answer(f"✅ Текст видео:\n\n{full_text}")
-    except Exception:
-        await message.answer("❌ Не удалось найти субтитры.")
+    except Exception as e:
+        logging.error(f"Ошибка для видео {video_id}: {e}")
+        await message.answer("❌ Субтитры не найдены. Возможно, они отключены автором или видео еще обрабатывается.")
 
 async def main():
-    # Очистка очереди и запуск
     await bot.delete_webhook(drop_pending_updates=True)
-    logging.info("Бот успешно запущен на aiogram 3.x!")
     await dp.start_polling(bot)
 
 if __name__ == '__main__':
