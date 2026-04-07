@@ -19,7 +19,7 @@ from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
 
 # ТВОЙ АБСОЛЮТНО НОВЫЙ ТОКЕН
-API_TOKEN = '8713594420:AAExQByQgqCInIUWdvLU2rOvPFuZCILDdiM'
+API_TOKEN = '8713594420:AAEUMWYhCtqU_6OTvYIW_f0yvULMiTyri9Y'
 
 # Настройка логирования
 logging.basicConfig(level=logging.INFO)
