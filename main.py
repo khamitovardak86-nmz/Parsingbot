@@ -32,7 +32,7 @@ def extract_video_id(url):
 
 @dp.message(Command("start"))
 async def send_welcome(message: types.Message):
-    await message.reply("Бот готов! Пришли ссылку на YouTube видео, и я попробую извлечь текст.")
+    await message.reply("Бот обновлен и готов к работе! Пришли ссылку на YouTube.")
 
 @dp.message()
 async def process_video(message: types.Message):
@@ -40,12 +40,11 @@ async def process_video(message: types.Message):
     if not video_id:
         return
 
-    status_msg = await message.answer("⏳ Начинаю обработку... Это может занять пару минут.")
+    status_msg = await message.answer("⏳ Начинаю обработку...")
     audio_file = f"{video_id}.mp3"
     wav_file = f"{video_id}.wav"
     
     try:
-        # Улучшенные настройки для обхода блокировок "Sign in to confirm you're not a bot"
         ydl_opts = {
             'format': 'bestaudio/best',
             'outtmpl': video_id,
@@ -59,22 +58,45 @@ async def process_video(message: types.Message):
             'nocheckcertificate': True,
             'add_header': [
                 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-                'Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
-                'Accept-Language: en-US,en;q=0.5',
-                'Referer: https://www.google.com/'
+                'Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8'
             ]
         }
         
+        # Блок загрузки
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             ydl.download([message.text])
         
-        # Railway иногда переименовывает файлы иначе, проверяем
         if not os.path.exists(audio_file) and os.path.exists(video_id):
             os.rename(video_id, audio_file)
 
-        # Конвертация в WAV для распознавания
+        # Конвертация (нужен FFmpeg в Nixpacks!)
         audio = AudioSegment.from_mp3(audio_file)
-        audio[:600000].export(wav_file, format="wav") # Ограничение 10 минут
+        audio[:600000].export(wav_file, format="wav")
 
         recognizer = sr.Recognizer()
-        with
+        with sr.AudioFile(wav_file) as source:
+            audio_data = recognizer.record(source)
+            try:
+                text = recognizer.recognize_google(audio_data, language="ru-RU")
+            except:
+                text = recognizer.recognize_google(audio_data, language="en-US")
+
+        await status_msg.edit_text(f"✅ Готово:\n\n{text[:4000]}")
+
+    except Exception as e:
+        await status_msg.edit_text(f"❌ Ошибка: {str(e)[:150]}")
+    
+    finally:
+        for f in [audio_file, wav_file, video_id]:
+            if os.path.exists(f):
+                os.remove(f)
+
+async def main():
+    await bot.delete_webhook(drop_pending_updates=True)
+    await dp.start_polling(bot)
+
+if __name__ == '__main__':
+    try:
+        asyncio.run(main())
+    except (KeyboardInterrupt, SystemExit):
+        pass
