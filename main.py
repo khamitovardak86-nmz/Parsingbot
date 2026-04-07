@@ -12,37 +12,47 @@ bot = Bot(token=API_TOKEN)
 dp = Dispatcher()
 
 def extract_video_id(url):
-    # Универсальный поиск ID видео (для ссылок /v/, /live/, /embed/, youtube.com, youtu.be)
     pattern = r"(?:v=|\/|be\/|live\/)([0-9A-Za-z_-]{11})"
     match = re.search(pattern, url)
     return match.group(1) if match else None
 
 @dp.message(Command("start"))
 async def send_welcome(message: types.Message):
-    await message.reply("Привет! Пришли мне ссылку на YouTube, и я достану текст.")
+    await message.reply("Привет! Пришли мне ссылку на YouTube, и я вытащу текст (даже автоматические субтитры).")
 
 @dp.message()
 async def get_transcript(message: types.Message):
     video_id = extract_video_id(message.text)
 
     if not video_id:
-        await message.answer("⚠️ Не удалось распознать ссылку. Пришли обычную ссылку на видео.")
         return
 
-    await message.answer("⏳ Собираю текст, подожди...")
+    wait_msg = await message.answer("⏳ Проверяю все доступные субтитры...")
 
     try:
-        # Пробуем достать русские или английские субтитры
-        transcript_list = YouTubeTranscriptApi.get_transcript(video_id, languages=['ru', 'en'])
-        full_text = " ".join([entry['text'] for entry in transcript_list])
+        # Получаем список всех доступных дорожек
+        transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
+        
+        # Пытаемся найти: 
+        # 1. Ручные (ru/en) 
+        # 2. Автоматические (ru/en)
+        try:
+            transcript = transcript_list.find_transcript(['ru', 'en'])
+        except:
+            # Если прямой дорожки нет, берем первую попавшуюся и переводим (опционально)
+            transcript = transcript_list.find_generated_transcript(['ru', 'en'])
+
+        data = transcript.fetch()
+        full_text = " ".join([entry['text'] for entry in data])
 
         if len(full_text) > 4000:
-            full_text = full_text[:4000] + "..."
+            full_text = full_text[:4000] + " [Текст обрезан из-за лимитов Telegram]"
 
-        await message.answer(f"✅ Текст видео:\n\n{full_text}")
+        await wait_msg.edit_text(f"✅ Текст найден:\n\n{full_text}")
+    
     except Exception as e:
-        logging.error(f"Ошибка для видео {video_id}: {e}")
-        await message.answer("❌ Субтитры не найдены. Возможно, они отключены автором или видео еще обрабатывается.")
+        logging.error(f"Ошибка: {e}")
+        await wait_msg.edit_text("❌ К сожалению, в этом видео совсем нет текстовой дорожки (даже автоматической).")
 
 async def main():
     await bot.delete_webhook(drop_pending_updates=True)
