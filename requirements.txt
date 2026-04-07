@@ -1,2 +1,4 @@
 aiogram
-youtube-transcript-api
+yt-dlp
+SpeechRecognition
+pydub
