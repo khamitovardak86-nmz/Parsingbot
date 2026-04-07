@@ -19,7 +19,7 @@ from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
 
 # Твой токен остается без изменений
-API_TOKEN = '8713594420:AAEUMWYhCtqU_6OTvYIW_f0yvULMiTyri9Y'
+API_TOKEN = '8713594420:AAHc2AZhZznm200rUOAJA0VrUg412HcuJUo'
 
 logging.basicConfig(level=logging.INFO)
 bot = Bot(token=API_TOKEN)
