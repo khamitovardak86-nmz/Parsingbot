@@ -9,7 +9,6 @@ API_TOKEN = '8713594420:AAHTSBGJ0cro8CnoBKWVLRPOkyQlCGizqTY'
 bot, dp, rec = Bot(token=API_TOKEN), Dispatcher(), sr.Recognizer()
 
 async def get_ai_translate(text):
-    """Умный перебор бесплатных провайдеров ИИ"""
     providers = [
         g4f.Provider.Blackbox,
         g4f.Provider.ChatGptEs,
@@ -21,17 +20,17 @@ async def get_ai_translate(text):
             response = await g4f.ChatCompletion.create_async(
                 model="gpt-3.5-turbo",
                 provider=provider,
-                messages=[{"role": "user", "content": f"Сделай подробный конспект этого текста на русском языке: {text}"}],
+                messages=[{"role": "user", "content": f"Сделай подробный русский конспект: {text}"}],
             )
             if response and len(str(response)) > 20:
                 return response
         except:
             continue
-    return "⚠️ (Ошибка ИИ: сервер перегружен, попробуй позже)"
+    return "⚠️ (Ошибка ИИ: сервер перегружен)"
 
 @dp.message(Command("start"))
 async def start(m: types.Message):
-    await m.answer("🌍 Бот готов! Пришли ссылку на видео (English или Arabic) для русского конспекта.")
+    await m.answer("🌍 Бот готов! Пришли ссылку на видео (EN/AR).")
 
 @dp.message()
 async def process(m: types.Message):
@@ -41,6 +40,7 @@ async def process(m: types.Message):
     msg = await m.answer("⏳ 1/3: Скачиваю аудио...")
 
     try:
+        # УЛУЧШЕННЫЕ НАСТРОЙКИ ДЛЯ ОБХОДА БЛОКИРОВКИ YOUTUBE
         ydl_opts = {
             'format': 'bestaudio',
             'outtmpl': vid,
@@ -49,8 +49,14 @@ async def process(m: types.Message):
                 'preferredcodec': 'mp3',
                 'preferredquality': '32'
             }],
-            'quiet': True
+            'quiet': True,
+            'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'nocheckcertificate': True,
+            'ignoreerrors': False,
+            'logtostderr': False,
+            'no_warnings': True,
         }
+        
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             ydl.download([m.text])
         
@@ -62,7 +68,6 @@ async def process(m: types.Message):
         full_text = []
 
         await msg.edit_text("⏳ 2/3: Распознаю речь (EN/AR)...")
-        # Режем по 5 минут
         for i in range(0, len(audio), 300000):
             chunk_p = f"{vid}_{i}.wav"
             audio[i:i+300000].set_frame_rate(16000).set_channels(1).export(chunk_p, format="wav")
@@ -72,18 +77,14 @@ async def process(m: types.Message):
                 try:
                     txt = rec.recognize_google(audio_data, language="en-US")
                 except:
-                    try:
-                        txt = rec.recognize_google(audio_data, language="ar-SA")
-                    except:
-                        txt = ""
+                    try: txt = rec.recognize_google(audio_data, language="ar-SA")
+                    except: txt = ""
                 if txt: full_text.append(txt)
             
             if os.path.exists(chunk_p): os.remove(chunk_p)
-            if (i // 300000) % 2 == 0:
-                await msg.edit_text(f"⏳ Обработано {i//60000} мин...")
+            await msg.edit_text(f"⏳ Обработано {i//60000} мин...")
 
-        await msg.edit_text("⏳ 3/3: Нейросеть готовит русский конспект...")
-        
+        await msg.edit_text("⏳ 3/3: Нейросеть пишет конспект...")
         final_results = []
         for i in range(0, len(full_text), 3):
             block = " ".join(full_text[i:i+3])
@@ -92,19 +93,14 @@ async def process(m: types.Message):
                 final_results.append(res)
 
         report = "\n\n".join(final_results)
-        
         if not report.strip():
-            await m.answer("❌ Не удалось распознать текст в видео.")
-        elif len(report) > 4000:
-            with open("summary.txt", "w", encoding="utf-8") as f: f.write(report)
-            await m.answer_document(types.FSInputFile("summary.txt"), caption="✅ Конспект готов!")
+            await m.answer("❌ Текст не найден.")
         else:
             await m.answer(f"✅ **Результат (RU):**\n\n{report}")
 
     except Exception as e:
-        await m.answer(f"❌ Ошибка: {str(e)[:100]}")
+        await m.answer(f"❌ YouTube заблокировал запрос. Попробуй другое видео или повтори позже.\n\nДетали: {str(e)[:50]}")
     finally:
-        # Исправленный блок очистки
         if os.path.exists(f"{vid}.mp3"):
             os.remove(f"{vid}.mp3")
 
