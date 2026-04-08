@@ -5,7 +5,7 @@ from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
 
 # ТОКЕН
-API_TOKEN = '8713594420:AAHli0qt3MFpSlK00BvBRa9djmzqjLSexYE'
+API_TOKEN = '8713594420:AAGLCF7t5x0SOZCo7JomNVffVg258sZVNvE'
 bot, dp, rec = Bot(token=API_TOKEN), Dispatcher(), sr.Recognizer()
 
 async def get_ai_translate(text):
