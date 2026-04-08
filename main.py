@@ -8,17 +8,16 @@ API_TOKEN = '8713594420:AAF80KdIxlsVMNTIONQ2kuXe_jFDwJCOcj4'
 bot, dp, rec = Bot(token=API_TOKEN), Dispatcher(), sr.Recognizer()
 
 async def get_ai_translate(text):
-    """ИИ переводит любой текст (EN/AR) в русский конспект"""
     try:
         return await g4f.ChatCompletion.create_async(
             model="gpt-3.5-turbo",
-            messages=[{"role": "user", "content": f"Изучи этот текст (он может быть на английском или арабском). Переведи его на русский и сделай подробный структурированный конспект: {text}"}]
+            messages=[{"role": "user", "content": f"Изучи текст (EN/AR). Сделай подробный русский конспект: {text}"}]
         )
     except: return "⚠️ Ошибка ИИ"
 
 @dp.message(Command("start"))
 async def start(m: types.Message):
-    await m.answer("🌍 Бот-переводчик готов! Пришли ссылку на видео (English или Arabic). Сделаю конспект на русском.")
+    await m.answer("🌍 Бот-переводчик (EN/AR -> RU) готов!")
 
 @dp.message()
 async def process(m: types.Message):
@@ -28,33 +27,29 @@ async def process(m: types.Message):
     msg = await m.answer("⏳ Начинаю обработку...")
 
     try:
-        with yt_dlp.YoutubeDL({'format':'bestaudio','outtmpl':vid,'postprocessors':[{'key':'FFmpegExtractAudio','preferredcodec':'mp3','preferredquality':'32'}],'quiet':True}).download([m.text])
+        ydl_opts = {'format':'bestaudio','outtmpl':vid,'postprocessors':[{'key':'FFmpegExtractAudio','preferredcodec':'mp3','preferredquality':'32'}],'quiet':True}
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            ydl.download([m.text])
+        
+        if not os.path.exists(f"{vid}.mp3") and os.path.exists(vid): os.rename(vid, f"{vid}.mp3")
         
         audio = AudioSegment.from_mp3(f"{vid}.mp3")
         full_text = []
 
-        # Режем по 5 минут
         for i in range(0, len(audio), 300000):
             chunk_p = f"{vid}_{i}.wav"
             audio[i:i+300000].set_frame_rate(16000).set_channels(1).export(chunk_p, format="wav")
-            
             with sr.AudioFile(chunk_p) as src:
                 audio_data = rec.record(src)
-                # Сначала пробуем английский, если пусто — арабский
-                try:
-                    txt = rec.recognize_google(audio_data, language="en-US")
+                try: txt = rec.recognize_google(audio_data, language="en-US")
                 except:
-                    try:
-                        txt = rec.recognize_google(audio_data, language="ar-SA")
-                    except:
-                        txt = ""
+                    try: txt = rec.recognize_google(audio_data, language="ar-SA")
+                    except: txt = ""
                 full_text.append(txt)
-            
             if os.path.exists(chunk_p): os.remove(chunk_p)
             await msg.edit_text(f"⏳ Обработано {i//60000} мин...")
 
-        # Суммаризация блоками
-        await msg.edit_text("🧠 ИИ создает русский конспект...")
+        await msg.edit_text("🧠 Создаю конспект...")
         final_results = []
         for i in range(0, len(full_text), 4):
             block = " ".join(full_text[i:i+4])
