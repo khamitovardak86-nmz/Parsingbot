@@ -4,8 +4,8 @@ from pydub import AudioSegment
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
 
-# ТОКЕН (Проверь его еще раз перед вставкой)
-API_TOKEN = '8271265279:AAGYIIzuyzg2ilM_bj8EQSSbgvI_4NpYt7U'
+# ТОКЕН (Убедись, что он верный)
+API_TOKEN = '8271265279:AAEYoXjNtYJJ4m2nlcFhcHgE0Sjm-a7xAic'
 
 bot, dp, rec = Bot(token=API_TOKEN), Dispatcher(), sr.Recognizer()
 
@@ -27,7 +27,7 @@ async def get_ai_translate(text):
 
 @dp.message(Command("start"))
 async def start(m: types.Message):
-    await m.answer("🚀 Бот запущен со всеми инструментами! Присылай ссылку.")
+    await m.answer("🚀 Бот обновлен! Теперь я использую самый гибкий метод скачивания. Присылай ссылку.")
 
 @dp.message()
 async def process(m: types.Message):
@@ -36,38 +36,49 @@ async def process(m: types.Message):
         return
     
     vid = v_id.group(1)
-    msg = await m.answer("⏳ 1/3: Скачиваю аудио (использую Node.js и FFmpeg)...")
+    msg = await m.answer("⏳ 1/3: Скачиваю (ультра-гибкий режим)...")
 
     try:
+        # УЛЬТРА-ГИБКИЕ НАСТРОЙКИ (игнорируем ошибки форматов)
         ydl_opts = {
-            'format': 'bestaudio/best', 
+            'format': 'bestaudio/best', # Пробуем аудио
             'outtmpl': f'{vid}.%(ext)s',
             'noplaylist': True,
             'cookiefile': 'cookies.txt',
             'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36',
             'quiet': True,
             'nocheckcertificate': True,
+            'ignoreerrors': True, # Важно: не падать при мелких ошибках
         }
         
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            # Пытаемся получить инфо. Если формат недоступен - меняем настройки на ходу
             try:
                 info = ydl.extract_info(m.text, download=True)
-            except Exception:
-                ydl_opts['format'] = 'worstvideo+bestaudio/best'
-                with yt_dlp.YoutubeDL(ydl_opts) as ydl_em:
-                    info = ydl_em.extract_info(m.text, download=True)
+                if not info or 'ext' not in info:
+                    raise Exception("Format Error")
+            except:
+                # Если упало - запрашиваем ВООБЩЕ любой формат (хоть 144p видео)
+                logging.info("Переключаюсь на аварийный формат...")
+                ydl.params['format'] = 'b' # Просто "best" (любой рабочий поток)
+                info = ydl.extract_info(m.text, download=True)
             
-            ext = info.get('ext', 'm4a')
+            ext = info.get('ext', 'mp4')
             downloaded_file = f"{vid}.{ext}"
         
+        # Поиск файла, если имя не совпало
         if not os.path.exists(downloaded_file):
             for f in os.listdir('.'):
                 if f.startswith(vid) and not f.endswith('.wav'):
                     downloaded_file = f
                     break
 
+        if not os.path.exists(downloaded_file):
+            raise Exception("Файл не скачан")
+
         await msg.edit_text("⏳ 2/3: Распознаю речь (RU/EN/AR)...")
         
+        # Вытаскиваем звук из того, что скачалось (видео или аудио)
         audio = AudioSegment.from_file(downloaded_file)
         full_text = []
 
@@ -88,7 +99,7 @@ async def process(m: types.Message):
             await msg.edit_text(f"⏳ Распознаю... Минут: {i // 60000}")
 
         if not full_text:
-            await msg.edit_text("❌ Голос не обнаружен.")
+            await msg.edit_text("❌ Не удалось найти голос в видео.")
             return
 
         await msg.edit_text("⏳ 3/3: Нейросеть пишет конспект...")
@@ -96,7 +107,8 @@ async def process(m: types.Message):
         await m.answer(f"✅ **Конспект:**\n\n{summary}")
 
     except Exception as e:
-        await m.answer(f"❌ Ошибка: {str(e)[:150]}")
+        await m.answer(f"❌ Ошибка скачивания. Возможно, YouTube заблокировал IP сервера. Попробуй позже или другое видео.")
+        logging.error(f"Full error: {e}")
     finally:
         for f in os.listdir('.'):
             if f.startswith(vid):
