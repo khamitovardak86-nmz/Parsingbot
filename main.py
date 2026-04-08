@@ -5,7 +5,7 @@ from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
 
 # ТОКЕН БОТА
-API_TOKEN = '8171908778:AAGPDEx21D-t6-WyrJYB700-ySz9AL-kH8w'
+API_TOKEN = '8171908778:AAHVO5ze_7Lx5vyZfdJ0FTeYkP4VVwlMPwQ'
 
 bot, dp, rec = Bot(token=API_TOKEN), Dispatcher(), sr.Recognizer()
 
@@ -13,7 +13,7 @@ async def get_ai_translate(text):
     """Генерация конспекта с защитой от разрывов и таймаутов"""
     clean_text = " ".join(text.split())[:5000] 
     
-    # Список провайдеров, которые сейчас показывают лучшую стабильность
+    # Список провайдеров для перебора при ошибках связи
     providers = [
         g4f.Provider.Binjie,
         g4f.Provider.Pizzagpt,
@@ -23,7 +23,7 @@ async def get_ai_translate(text):
 
     for p in providers:
         try:
-            # Устанавливаем лимит ожидания 60 секунд на ответ ИИ
+            # Даем ИИ 60 секунд на ответ
             response = await asyncio.wait_for(
                 g4f.ChatCompletion.create_async(
                     model="gpt-3.5-turbo",
@@ -35,14 +35,14 @@ async def get_ai_translate(text):
             if response and len(str(response)) > 50:
                 return response
         except Exception as e:
-            logging.error(f"Провайдер {p.__name__} не подошел: {e}")
-            continue # Пробуем следующего, если этот отключился или долго думает
+            logging.error(f"Провайдер {p.__name__} не ответил: {e}")
+            continue 
 
-    return f"⚠️ ИИ перегружен, связь прервана. Вот часть текста:\n\n{clean_text[:1000]}..."
+    return f"⚠️ ИИ временно перегружен. Вот начало расшифровки:\n\n{clean_text[:1000]}..."
 
 @dp.message(Command("start"))
 async def start(m: types.Message):
-    await m.answer("🚀 Бот обновлен и готов! Исправлены ошибки связи с ИИ. Присылай ссылку.")
+    await m.answer("🚀 Бот обновлен! Куки и защита от разрывов связи настроены. Присылай ссылку на YouTube.")
 
 @dp.message()
 async def process(m: types.Message):
@@ -58,24 +58,31 @@ async def process(m: types.Message):
             'format': 'bestaudio/best', 
             'outtmpl': f'{vid}.%(ext)s',
             'noplaylist': True,
-            'cookiefile': 'cookies.txt',
+            'cookiefile': 'cookies.txt', # Использует твои обновленные куки
             'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36',
             'quiet': True,
             'nocheckcertificate': True,
-            'extractor_args': {'youtube': {'player_client': ['android', 'web']}},
+            'extractor_args': {
+                'youtube': {
+                    'player_client': ['android', 'tv', 'mweb'],
+                    'skip': ['hls', 'dash']
+                }
+            },
         }
         
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             try:
                 info = ydl.extract_info(m.text, download=True)
-            except:
-                ydl_opts['format'] = 'worstvideo[ext=mp4]+bestaudio/best'
-                with yt_dlp.YoutubeDL(ydl_opts) as ydl_em:
-                    info = ydl_em.extract_info(m.text, download=True)
+            except Exception:
+                # Если с куками беда, пробуем аварийный режим без них через TV-клиент
+                ydl_opts.pop('cookiefile', None)
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl_alt:
+                    info = ydl_alt.extract_info(m.text, download=True)
             
             ext = info.get('ext', 'mp4') if info else 'mp4'
             downloaded_file = f"{vid}.{ext}"
         
+        # Проверка наличия файла
         if not os.path.exists(downloaded_file):
             for f in os.listdir('.'):
                 if f.startswith(vid) and not f.endswith('.wav'):
@@ -83,13 +90,14 @@ async def process(m: types.Message):
                     break
 
         if not os.path.exists(downloaded_file):
-            raise Exception("YouTube заблокировал скачивание.")
+            raise Exception("YouTube заблокировал доступ. Попробуйте обновить cookies.txt позже.")
 
-        await msg.edit_text("⏳ 2/3: Распознавание речи...")
+        await msg.edit_text("⏳ 2/3: Распознавание речи (FFmpeg)...")
         
         audio = AudioSegment.from_file(downloaded_file)
         full_text = []
 
+        # Нарезка по 5 минут
         for i in range(0, len(audio), 300000):
             chunk_p = f"{vid}_temp.wav"
             audio[i:i+300000].set_frame_rate(16000).set_channels(1).export(chunk_p, format="wav")
@@ -104,19 +112,20 @@ async def process(m: types.Message):
                 if txt: full_text.append(txt)
             
             if os.path.exists(chunk_p): os.remove(chunk_p)
-            await msg.edit_text(f"⏳ Обработка... Минут: {i // 60000}")
+            await msg.edit_text(f"⏳ Обработка звука... Минут: {i // 60000}")
 
         if not full_text:
-            await msg.edit_text("❌ Речь не найдена.")
+            await msg.edit_text("❌ Речь в видео не распознана.")
             return
 
         await msg.edit_text("⏳ 3/3: Нейросеть пишет конспект...")
         summary = await get_ai_translate(" ".join(full_text))
-        await m.answer(f"✅ **Конспект видео:**\n\n{summary}")
+        await m.answer(f"✅ **Результат анализа:**\n\n{summary}")
 
     except Exception as e:
         await m.answer(f"❌ Ошибка: {str(e)[:150]}")
     finally:
+        # Очистка файлов
         for f in os.listdir('.'):
             if f.startswith(vid):
                 try: os.remove(f)
