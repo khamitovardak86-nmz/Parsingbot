@@ -2,3 +2,5 @@ aiogram
 yt-dlp
 SpeechRecognition
 pydub
+g4f
+curl_cffi
