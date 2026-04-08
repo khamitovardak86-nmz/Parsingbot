@@ -5,55 +5,55 @@ from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
 
 # ТОКЕН БОТА
-API_TOKEN = '8171908778:AAH9Jcs4KtEVoadkbf7aQ2aPrAjAYJ8pmmw'
+API_TOKEN = '8171908778:AAGPDEx21D-t6-WyrJYB700-ySz9AL-kH8w'
 
 bot, dp, rec = Bot(token=API_TOKEN), Dispatcher(), sr.Recognizer()
 
 async def get_ai_translate(text):
-    """Генерация конспекта через ИИ с автоматическим выбором провайдера"""
-    # Очищаем текст от лишних пробелов и ограничиваем длину для стабильности
-    clean_text = " ".join(text.split())[:6000]
+    """Генерация конспекта с защитой от разрывов и таймаутов"""
+    clean_text = " ".join(text.split())[:5000] 
     
-    # Попытка №1: Автоматический выбор лучшего доступного провайдера
-    try:
-        response = await g4f.ChatCompletion.create_async(
-            model=g4f.models.default,
-            messages=[{"role": "user", "content": f"Сделай подробный русский конспект этой расшифровки видео: {clean_text}"}],
-        )
-        if response and len(str(response)) > 50:
-            return response
-    except Exception as e:
-        logging.error(f"Ошибка ИИ (Авто): {e}")
+    # Список провайдеров, которые сейчас показывают лучшую стабильность
+    providers = [
+        g4f.Provider.Binjie,
+        g4f.Provider.Pizzagpt,
+        g4f.Provider.Liaobots,
+        g4f.Provider.FreeChatgpt
+    ]
 
-    # Попытка №2: Прямое обращение к базовой модели gpt-3.5
-    try:
-        response = await g4f.ChatCompletion.create_async(
-            model="gpt-3.5-turbo",
-            messages=[{"role": "user", "content": f"Сделай краткий конспект на русском: {clean_text}"}],
-        )
-        if response and len(str(response)) > 50:
-            return response
-    except Exception as e:
-        logging.error(f"Ошибка ИИ (Запасная): {e}")
+    for p in providers:
+        try:
+            # Устанавливаем лимит ожидания 60 секунд на ответ ИИ
+            response = await asyncio.wait_for(
+                g4f.ChatCompletion.create_async(
+                    model="gpt-3.5-turbo",
+                    provider=p,
+                    messages=[{"role": "user", "content": f"Сделай подробный русский конспект этой расшифровки видео: {clean_text}"}],
+                ),
+                timeout=60.0
+            )
+            if response and len(str(response)) > 50:
+                return response
+        except Exception as e:
+            logging.error(f"Провайдер {p.__name__} не подошел: {e}")
+            continue # Пробуем следующего, если этот отключился или долго думает
 
-    return f"⚠️ ИИ временно недоступен, но текст успешно распознан. Вот начало:\n\n{clean_text[:1000]}..."
+    return f"⚠️ ИИ перегружен, связь прервана. Вот часть текста:\n\n{clean_text[:1000]}..."
 
 @dp.message(Command("start"))
 async def start(m: types.Message):
-    await m.answer("🚀 Бот обновлен! Ошибка ИИ исправлена. Теперь всё должно работать. Присылай ссылку!")
+    await m.answer("🚀 Бот обновлен и готов! Исправлены ошибки связи с ИИ. Присылай ссылку.")
 
 @dp.message()
 async def process(m: types.Message):
-    # Поиск ID видео
     v_id = re.search(r"(?:v=|\/|be\/)([0-9A-Za-z_-]{11})", m.text)
     if not v_id:
         return
     
     vid = v_id.group(1)
-    msg = await m.answer("⏳ 1/3: Загрузка аудио через защищенный канал...")
+    msg = await m.answer("⏳ 1/3: Загрузка через защищенный канал...")
 
     try:
-        # Настройки скачивания
         ydl_opts = {
             'format': 'bestaudio/best', 
             'outtmpl': f'{vid}.%(ext)s',
@@ -85,9 +85,8 @@ async def process(m: types.Message):
         if not os.path.exists(downloaded_file):
             raise Exception("YouTube заблокировал скачивание.")
 
-        await msg.edit_text("⏳ 2/3: Распознавание речи (использую FFmpeg)...")
+        await msg.edit_text("⏳ 2/3: Распознавание речи...")
         
-        # Обработка аудио
         audio = AudioSegment.from_file(downloaded_file)
         full_text = []
 
@@ -105,20 +104,19 @@ async def process(m: types.Message):
                 if txt: full_text.append(txt)
             
             if os.path.exists(chunk_p): os.remove(chunk_p)
-            await msg.edit_text(f"⏳ Обработка звука... Минут: {i // 60000}")
+            await msg.edit_text(f"⏳ Обработка... Минут: {i // 60000}")
 
         if not full_text:
-            await msg.edit_text("❌ В видео не найдена речь.")
+            await msg.edit_text("❌ Речь не найдена.")
             return
 
-        await msg.edit_text("⏳ 3/3: Нейросеть составляет конспект...")
+        await msg.edit_text("⏳ 3/3: Нейросеть пишет конспект...")
         summary = await get_ai_translate(" ".join(full_text))
-        await m.answer(f"✅ **Результат анализа:**\n\n{summary}")
+        await m.answer(f"✅ **Конспект видео:**\n\n{summary}")
 
     except Exception as e:
         await m.answer(f"❌ Ошибка: {str(e)[:150]}")
     finally:
-        # Удаление временных файлов
         for f in os.listdir('.'):
             if f.startswith(vid):
                 try: os.remove(f)
@@ -129,7 +127,7 @@ async def main():
         await bot.delete_webhook(drop_pending_updates=True)
         await dp.start_polling(bot)
     except Exception as e:
-        logging.error(f"Ошибка при запуске: {e}")
+        logging.error(f"Ошибка: {e}")
 
 if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO)
