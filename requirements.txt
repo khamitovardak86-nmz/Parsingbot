@@ -1,6 +1,6 @@
 aiogram
 yt-dlp
-SpeechRecognition
+speechrecognition
 pydub
 g4f
 curl_cffi
