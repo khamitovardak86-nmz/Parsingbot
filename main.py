@@ -4,18 +4,13 @@ from pydub import AudioSegment
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
 
-# КОНФИГУРАЦИЯ (Обновленный токен)
-API_TOKEN = '8713594420:AAHli0qt3MFpSlK00BvBRa9djmzqjLSexYE'
+# ТОКЕН (Твой актуальный)
+API_TOKEN = '8713594420:AAEx948Qr3S425OK0cfL9YeToTbIo3CSS6M'
 bot, dp, rec = Bot(token=API_TOKEN), Dispatcher(), sr.Recognizer()
 
 async def get_ai_translate(text):
-    """Умный перебор бесплатных провайдеров ИИ"""
-    providers = [
-        g4f.Provider.Blackbox,
-        g4f.Provider.ChatGptEs,
-        g4f.Provider.DarkAI,
-        g4f.Provider.Liaobots
-    ]
+    """Функция для создания конспекта через нейросеть"""
+    providers = [g4f.Provider.Blackbox, g4f.Provider.ChatGptEs, g4f.Provider.DarkAI]
     for provider in providers:
         try:
             response = await g4f.ChatCompletion.create_async(
@@ -27,47 +22,45 @@ async def get_ai_translate(text):
                 return response
         except:
             continue
-    return "⚠️ (Ошибка ИИ: сервер сейчас занят, попробуй позже)"
+    return "⚠️ (Ошибка ИИ: сервер временно недоступен)"
 
 @dp.message(Command("start"))
 async def start(m: types.Message):
-    await m.answer("🌍 Бот запущен с новым токеном! Пришли ссылку на видео (EN/AR).")
+    await m.answer("🌍 Бот готов к работе с Cookies! Пришли ссылку на YouTube видео.")
 
 @dp.message()
 async def process(m: types.Message):
-    # Поиск ID видео в ссылке
+    # Ищем ID видео в ссылке
     v_id = re.search(r"(?:v=|\/|be\/)([0-9A-Za-z_-]{11})", m.text)
-    if not v_id: return
+    if not v_id:
+        return
+    
     vid = v_id.group(1)
-    msg = await m.answer("⏳ 1/3: Скачиваю аудио...")
+    msg = await m.answer("⏳ 1/3: Скачиваю аудио (авторизация по Cookies)...")
 
     try:
-        # Настройки для скачивания и обхода блокировок
         ydl_opts = {
-            'format': 'bestaudio',
+            'format': 'bestaudio/best',
             'outtmpl': vid,
-            'postprocessors': [{
-                'key': 'FFmpegExtractAudio',
-                'preferredcodec': 'mp3',
-                'preferredquality': '32'
-            }],
+            'postprocessors': [{'key': 'FFmpegExtractAudio', 'preferredcodec': 'mp3', 'preferredquality': '32'}],
             'quiet': True,
-            'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'nocheckcertificate': True
+            'cookiefile': 'cookies.txt',  # Тот самый файл, который ты создал
+            'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
         }
         
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             ydl.download([m.text])
         
         audio_file = f"{vid}.mp3"
-        if not os.path.exists(audio_file) and os.path.exists(vid): 
+        if not os.path.exists(audio_file) and os.path.exists(vid):
             os.rename(vid, audio_file)
         
+        # Разбивка и распознавание речи
         audio = AudioSegment.from_mp3(audio_file)
         full_text = []
 
-        await msg.edit_text("⏳ 2/3: Распознаю речь (EN/AR)...")
-        # Обработка по 5 минут
+        await msg.edit_text("⏳ 2/3: Распознаю речь (это может занять время)...")
+        # Обработка кусками по 5 минут
         for i in range(0, len(audio), 300000):
             chunk_p = f"{vid}_{i}.wav"
             audio[i:i+300000].set_frame_rate(16000).set_channels(1).export(chunk_p, format="wav")
@@ -75,39 +68,38 @@ async def process(m: types.Message):
             with sr.AudioFile(chunk_p) as src:
                 audio_data = rec.record(src)
                 try:
-                    # Сначала пробуем английский, затем арабский
+                    # Пробуем английский, если не вышло - арабский (как в твоем примере)
                     txt = rec.recognize_google(audio_data, language="en-US")
                 except:
                     try:
                         txt = rec.recognize_google(audio_data, language="ar-SA")
                     except:
                         txt = ""
-                if txt: full_text.append(txt)
+                if txt:
+                    full_text.append(txt)
             
-            if os.path.exists(chunk_p): os.remove(chunk_p)
-            await msg.edit_text(f"⏳ Обработано {i//60000} мин...")
+            if os.path.exists(chunk_p):
+                os.remove(chunk_p)
+            
+            # Обновляем статус в ТГ
+            current_min = i // 60000
+            await msg.edit_text(f"⏳ Распознаю... Обработано минут: {current_min}")
 
-        await msg.edit_text("⏳ 3/3: Нейросеть пишет отчет...")
-        
-        final_results = []
-        for i in range(0, len(full_text), 3):
-            block = " ".join(full_text[i:i+3])
-            if block.strip():
-                res = await get_ai_translate(block)
-                final_results.append(res)
+        if not full_text:
+            await msg.edit_text("❌ Не удалось распознать речь в этом видео.")
+            return
 
-        report = "\n\n".join(final_results)
+        await msg.edit_text("⏳ 3/3: Нейросеть готовит конспект на русском...")
         
-        if not report.strip():
-            await m.answer("❌ Не удалось распознать текст в этом видео.")
-        elif len(report) > 4000:
-            with open("report.txt", "w", encoding="utf-8") as f: f.write(report)
-            await m.answer_document(types.FSInputFile("report.txt"), caption="✅ Конспект готов!")
-        else:
-            await m.answer(f"✅ **Результат (RU):**\n\n{report}")
+        # Склеиваем текст и отправляем в ИИ
+        combined_text = " ".join(full_text)
+        # Если текст слишком длинный, берем первые 5000 символов для конспекта
+        summary = await get_ai_translate(combined_text[:5000])
+
+        await m.answer(f"✅ **Готовый конспект:**\n\n{summary}")
 
     except Exception as e:
-        await m.answer(f"❌ Ошибка: {str(e)[:100]}")
+        await m.answer(f"❌ Произошла ошибка: {str(e)[:100]}")
     finally:
         # Удаляем временный аудиофайл
         if os.path.exists(f"{vid}.mp3"):
@@ -118,4 +110,5 @@ async def main():
     await dp.start_polling(bot)
 
 if __name__ == '__main__':
+    logging.basicConfig(level=logging.INFO)
     asyncio.run(main())
