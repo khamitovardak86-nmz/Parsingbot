@@ -5,7 +5,7 @@ from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
 
 # ТОКЕН
-API_TOKEN = '8713594420:AAE1Bm4fyhpXnis4AhE95WNWqmIhtjgMCc4'
+API_TOKEN = '8713594420:AAHgIwvMZAvWq9AZ1cd7sezKYB1N40Cbvaw'
 bot, dp, rec = Bot(token=API_TOKEN), Dispatcher(), sr.Recognizer()
 
 async def get_ai_translate(text):
@@ -16,7 +16,7 @@ async def get_ai_translate(text):
             response = await g4f.ChatCompletion.create_async(
                 model="gpt-3.5-turbo",
                 provider=provider,
-                messages=[{"role": "user", "content": f"Сделай подробный русский конспект этого текста: {text}"}],
+                messages=[{"role": "user", "content": f"Сделай подробный конспект этого видео на русском языке: {text}"}],
             )
             if response and len(str(response)) > 20:
                 return response
@@ -26,7 +26,7 @@ async def get_ai_translate(text):
 
 @dp.message(Command("start"))
 async def start(m: types.Message):
-    await m.answer("🌍 Бот готов к работе! Пришли ссылку на YouTube видео.")
+    await m.answer("🌍 Бот запущен! Теперь с поддержкой JavaScript и Cookies. Присылай ссылку!")
 
 @dp.message()
 async def process(m: types.Message):
@@ -35,12 +35,12 @@ async def process(m: types.Message):
         return
     
     vid = v_id.group(1)
-    msg = await m.answer("⏳ 1/3: Скачиваю аудио...")
+    msg = await m.answer("⏳ 1/3: Скачиваю аудио (обхожу защиту YouTube)...")
 
     try:
-        # ОБНОВЛЕННЫЕ НАСТРОЙКИ (Исправлена ошибка Requested format is not available)
+        # УНИВЕРСАЛЬНЫЕ НАСТРОЙКИ
         ydl_opts = {
-            'format': 'm4a/bestaudio/best',  # Берем m4a или любое лучшее аудио
+            'format': 'ba/b',  # Самый надежный формат для скачивания только аудио
             'outtmpl': vid,
             'noplaylist': True,
             'quiet': True,
@@ -60,10 +60,11 @@ async def process(m: types.Message):
         if not os.path.exists(audio_file) and os.path.exists(vid):
             os.rename(vid, audio_file)
         
+        # Распознавание
         audio = AudioSegment.from_mp3(audio_file)
         full_text = []
 
-        await msg.edit_text("⏳ 2/3: Распознаю речь...")
+        await msg.edit_text("⏳ 2/3: Распознаю речь (это займет пару минут)...")
         for i in range(0, len(audio), 300000):
             chunk_p = f"{vid}_{i}.wav"
             audio[i:i+300000].set_frame_rate(16000).set_channels(1).export(chunk_p, format="wav")
@@ -83,21 +84,21 @@ async def process(m: types.Message):
             if os.path.exists(chunk_p):
                 os.remove(chunk_p)
             
-            await msg.edit_text(f"⏳ Распознаю... Минут обработано: {i // 60000}")
+            await msg.edit_text(f"⏳ Распознаю... Обработано минут: {i // 60000}")
 
         if not full_text:
-            await msg.edit_text("❌ Не удалось распознать речь.")
+            await msg.edit_text("❌ Не удалось извлечь текст из аудио.")
             return
 
-        await msg.edit_text("⏳ 3/3: ИИ готовит конспект...")
+        await msg.edit_text("⏳ 3/3: Нейросеть пишет конспект...")
         
         combined_text = " ".join(full_text)
-        summary = await get_ai_translate(combined_text[:5000])
+        summary = await get_ai_translate(combined_text[:6000])
 
-        await m.answer(f"✅ **Готовый конспект:**\n\n{summary}")
+        await m.answer(f"✅ **Результат анализа:**\n\n{summary}")
 
     except Exception as e:
-        await m.answer(f"❌ Ошибка: {str(e)[:100]}")
+        await m.answer(f"❌ Ошибка при скачивании: {str(e)[:150]}")
     finally:
         if os.path.exists(f"{vid}.mp3"):
             os.remove(f"{vid}.mp3")
