@@ -5,7 +5,7 @@ from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
 
 # ТОКЕН БОТА (Твой актуальный)
-API_TOKEN = '8271265279:AAFuUYamI7OZvlTe6fp3rSsGJhcEMPXOu_0'
+API_TOKEN = '8271265279:AAGT3Z6CTDAfTW_ADYS3rNu1sDV2KVO64nY'
 
 bot, dp, rec = Bot(token=API_TOKEN), Dispatcher(), sr.Recognizer()
 
