@@ -1,6 +1,7 @@
 aiogram
-yt-dlp
+yt-dlp>=2025.01.26
 speechrecognition
 pydub
 g4f
 curl_cffi
+
